@@ -1,33 +1,23 @@
 import { useCallback, useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import MapboxGL from '@rnmapbox/maps';
 
-import { getApiBaseUrl } from '@/constants/api';
 import { colors } from '@/constants/theme';
 import { getCities, type ApiCity } from '@/services/travoApi';
 
+MapboxGL.setAccessToken(process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ?? '');
+
 export default function MapScreen() {
-  const [cities, setCities] = useState<ApiCity[] | null>(null);
+  const [cities, setCities] = useState<ApiCity[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    setLoading(true);
     setError(null);
     try {
       const data = await getCities();
       setCities(data);
     } catch (e) {
-      setCities(null);
       setError(e instanceof Error ? e.message : 'Failed to load cities');
-    } finally {
-      setLoading(false);
     }
   }, []);
 
@@ -35,136 +25,78 @@ export default function MapScreen() {
     void load();
   }, [load]);
 
-  const preview = cities?.slice(0, 5) ?? [];
-
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Backend connection</Text>
-      <Text style={styles.subtitle}>
-        API: {getApiBaseUrl()}
-      </Text>
-
-      {loading ? (
-        <ActivityIndicator size="large" color={colors.textPrimary} />
-      ) : null}
+    <View style={styles.container}>
+      <MapboxGL.MapView style={styles.map}>
+        <MapboxGL.Camera zoomLevel={3} centerCoordinate={[-98.5795, 39.8283]} />
+        {cities.map((c) =>
+          c.lng != null && c.lat != null ? (
+            <MapboxGL.PointAnnotation
+              key={String(c.id)}
+              id={String(c.id)}
+              coordinate={[parseFloat(c.lng), parseFloat(c.lat)]}
+            >
+              <View style={styles.pin} />
+              <MapboxGL.Callout title={`${c.city}, ${c.state_name}`} />
+            </MapboxGL.PointAnnotation>
+          ) : null,
+        )}
+      </MapboxGL.MapView>
 
       {error ? (
-        <View style={styles.card}>
-          <Text style={styles.errorTitle}>Could not reach the API</Text>
-          <Text style={styles.errorBody}>{error}</Text>
-          <Text style={styles.hint}>
-            Start Django:{' '}
-            <Text style={styles.mono}>cd TravoBackend && python manage.py runserver</Text>
-          </Text>
-          <Text style={styles.hint}>
-            On a physical device, set EXPO_PUBLIC_API_BASE_URL to your computer&apos;s LAN IP
-            (see .env.example).
-          </Text>
-          <Pressable style={styles.button} onPress={() => void load()}>
-            <Text style={styles.buttonText}>Retry</Text>
+        <View style={styles.banner}>
+          <Text style={styles.bannerText}>Backend offline — pins unavailable</Text>
+          <Pressable onPress={() => void load()}>
+            <Text style={styles.bannerRetry}>Retry</Text>
+          </Pressable>
+          <Pressable onPress={() => setError(null)}>
+            <Text style={styles.bannerDismiss}>✕</Text>
           </Pressable>
         </View>
       ) : null}
-
-      {!loading && !error && cities ? (
-        <View style={styles.card}>
-          <Text style={styles.success}>
-            Loaded {cities.length} cities from the backend.
-          </Text>
-          {preview.map((c) => (
-            <Text key={c.id} style={styles.row}>
-              {c.city}, {c.state_name}
-            </Text>
-          ))}
-          {cities.length > preview.length ? (
-            <Text style={styles.more}>
-              … and {cities.length - preview.length} more
-            </Text>
-          ) : null}
-        </View>
-      ) : null}
-
-      <Text style={styles.footer}>Map / Mapbox can plug into this data next.</Text>
-    </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flexGrow: 1,
-    backgroundColor: colors.background,
-    padding: 24,
-    paddingTop: 48,
+    flex: 1,
   },
-  title: {
-    color: colors.textPrimary,
-    fontSize: 24,
-    fontWeight: '700',
-    marginBottom: 8,
+  map: {
+    flex: 1,
   },
-  subtitle: {
-    color: colors.textPrimary,
-    fontSize: 13,
-    marginBottom: 20,
-    opacity: 0.85,
+  pin: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: colors.textPrimary,
   },
-  card: {
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-  },
-  success: {
-    color: colors.textPrimary,
-    fontWeight: '600',
-    marginBottom: 12,
-  },
-  row: {
-    color: colors.textPrimary,
-    marginBottom: 6,
-  },
-  more: {
-    color: colors.textPrimary,
-    marginTop: 8,
-    opacity: 0.8,
-    fontStyle: 'italic',
-  },
-  errorTitle: {
-    color: '#f87171',
-    fontWeight: '700',
-    marginBottom: 8,
-  },
-  errorBody: {
-    color: colors.textPrimary,
-    marginBottom: 12,
-  },
-  hint: {
-    color: colors.textPrimary,
-    fontSize: 13,
-    marginBottom: 8,
-    opacity: 0.9,
-  },
-  mono: {
-    fontFamily: 'monospace',
-    fontSize: 12,
-  },
-  button: {
-    marginTop: 12,
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    paddingHorizontal: 16,
+  banner: {
+    position: 'absolute',
+    top: 12,
+    left: 16,
+    right: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    borderRadius: 10,
     paddingVertical: 10,
-    borderRadius: 8,
+    paddingHorizontal: 14,
+    gap: 8,
   },
-  buttonText: {
-    color: colors.textPrimary,
-    fontWeight: '600',
-  },
-  footer: {
-    color: colors.textPrimary,
-    opacity: 0.65,
+  bannerText: {
+    color: '#fff',
+    flex: 1,
     fontSize: 13,
-    textAlign: 'center',
-    marginTop: 8,
+  },
+  bannerRetry: {
+    color: '#60a5fa',
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  bannerDismiss: {
+    color: '#9ca3af',
+    fontSize: 13,
+    paddingLeft: 4,
   },
 });
